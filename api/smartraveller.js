@@ -1,5 +1,5 @@
 // api/smartraveller.js
-// Simple serverless function for Vercel
+// Fetch real data from Smartraveller's official API
 
 module.exports = async (req, res) => {
   // Enable CORS
@@ -7,96 +7,73 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate');
 
-  // List of countries with their Smartraveller slugs
-  const countries = [
-    // Level 4 - Do Not Travel
-    { name: 'Afghanistan', slug: 'afghanistan', level: 4 },
-    { name: 'Belarus', slug: 'belarus', level: 4 },
-    { name: 'Burkina Faso', slug: 'burkina-faso', level: 4 },
-    { name: 'Central African Republic', slug: 'central-african-republic', level: 4 },
-    { name: 'Chad', slug: 'chad', level: 4 },
-    { name: 'Democratic Republic of the Congo', slug: 'democratic-republic-congo', level: 4 },
-    { name: 'Haiti', slug: 'haiti', level: 4 },
-    { name: 'Iran', slug: 'iran', level: 4 },
-    { name: 'Iraq', slug: 'iraq', level: 4 },
-    { name: 'Libya', slug: 'libya', level: 4 },
-    { name: 'Mali', slug: 'mali', level: 4 },
-    { name: 'Myanmar', slug: 'myanmar', level: 4 },
-    { name: 'Niger', slug: 'niger', level: 4 },
-    { name: 'North Korea', slug: 'north-korea', level: 4 },
-    { name: 'Palestine', slug: 'palestine', level: 4 },
-    { name: 'Russia', slug: 'russia', level: 4 },
-    { name: 'Somalia', slug: 'somalia', level: 4 },
-    { name: 'South Sudan', slug: 'south-sudan', level: 4 },
-    { name: 'Sudan', slug: 'sudan', level: 4 },
-    { name: 'Syria', slug: 'syria', level: 4 },
-    { name: 'Ukraine', slug: 'ukraine', level: 4 },
-    { name: 'Venezuela', slug: 'venezuela', level: 4 },
-    { name: 'Yemen', slug: 'yemen', level: 4 },
+  try {
+    // Fetch from Smartraveller's official public API
+    const response = await fetch('https://www.smartraveller.gov.au/destinations-export', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch from Smartraveller API');
+    }
+
+    const data = await response.json();
+
+    const levelMapping = {
+      1: 'Green - Safe',
+      2: 'Yellow - Caution',
+      3: 'Orange - Unsafe',
+      4: 'Red - Do Not Travel'
+    };
+
+    // Process the data
+    const advisories = data.data.map(country => {
+      // Extract the advisory summary (remove "We continue to advise" prefix)
+      let summary = country.advisory || country.advice_text || 'No advisory available';
+      
+      // Clean up the summary
+      summary = summary.replace(/^We continue to advise:?\s*/i, '');
+      summary = summary.replace(/^We advise:?\s*/i, '');
+      summary = summary.trim();
+
+      // Get the level
+      const level = parseInt(country.alert_level) || 1;
+
+      return {
+        country: country.name,
+        level: level,
+        levelText: levelMapping[level],
+        summary: summary,
+        isNew: false
+      };
+    });
+
+    // Sort by risk level (highest first)
+    advisories.sort((a, b) => b.level - a.level);
+
+    res.status(200).json({
+      success: true,
+      lastUpdated: new Date().toISOString(),
+      advisories: advisories
+    });
+
+  } catch (error) {
+    console.error('Error fetching from Smartraveller:', error);
     
-    // Level 3 - Reconsider
-    { name: 'Lebanon', slug: 'lebanon', level: 3 },
-    { name: 'Pakistan', slug: 'pakistan', level: 3 },
-    { name: 'Egypt', slug: 'egypt', level: 3 },
-    { name: 'Ethiopia', slug: 'ethiopia', level: 3 },
-    { name: 'Kenya', slug: 'kenya', level: 3 },
-    { name: 'Colombia', slug: 'colombia', level: 3 },
-    { name: 'Nigeria', slug: 'nigeria', level: 3 },
-    
-    // Level 2 - High Caution
-    { name: 'Thailand', slug: 'thailand', level: 2 },
-    { name: 'Indonesia', slug: 'indonesia', level: 2 },
-    { name: 'Philippines', slug: 'philippines', level: 2 },
-    { name: 'India', slug: 'india', level: 2 },
-    { name: 'Mexico', slug: 'mexico', level: 2 },
-    { name: 'Brazil', slug: 'brazil', level: 2 },
-    { name: 'South Africa', slug: 'south-africa', level: 2 },
-    { name: 'Turkey', slug: 'turkey', level: 2 },
-    { name: 'Israel', slug: 'israel', level: 2 },
-    
-    // Level 1 - Normal Precautions
-    { name: 'Japan', slug: 'japan', level: 1 },
-    { name: 'Singapore', slug: 'singapore', level: 1 },
-    { name: 'South Korea', slug: 'south-korea', level: 1 },
-    { name: 'Vietnam', slug: 'vietnam', level: 1 },
-    { name: 'United States', slug: 'united-states-america', level: 1 },
-    { name: 'United Kingdom', slug: 'united-kingdom', level: 1 },
-    { name: 'France', slug: 'france', level: 1 },
-    { name: 'Germany', slug: 'germany', level: 1 },
-    { name: 'Italy', slug: 'italy', level: 1 },
-    { name: 'Spain', slug: 'spain', level: 1 },
-    { name: 'New Zealand', slug: 'new-zealand', level: 1 }
-  ];
+    // Fallback data if API fails
+    const fallbackAdvisories = [
+      { country: 'Iran', level: 4, levelText: 'Red - Do Not Travel', summary: 'Do not travel to Iran due to the risk of arbitrary detention and the volatile regional security situation.', isNew: false },
+      { country: 'Russia', level: 4, levelText: 'Red - Do Not Travel', summary: 'Do not travel to Russia due to the dangerous security situation, the impacts of the military conflict with Ukraine and the risk of arbitrary detention or arrest.', isNew: false },
+      { country: 'Afghanistan', level: 4, levelText: 'Red - Do Not Travel', summary: 'Do not travel to Afghanistan due to the extremely dangerous security situation and the very high threat of terrorism.', isNew: false }
+    ];
 
-  const levelTexts = {
-    1: 'Green - Safe',
-    2: 'Yellow - Caution',
-    3: 'Orange - Unsafe',
-    4: 'Red - Do Not Travel'
-  };
-
-  const summaries = {
-    1: 'Exercise normal safety precautions.',
-    2: 'Exercise a high degree of caution.',
-    3: 'Reconsider your need to travel.',
-    4: 'Do not travel.'
-  };
-
-  // Create advisories array
-  const advisories = countries.map(country => ({
-    country: country.name,
-    level: country.level,
-    levelText: levelTexts[country.level],
-    summary: summaries[country.level],
-    isNew: false
-  }));
-
-  // Sort by risk level (highest first)
-  advisories.sort((a, b) => b.level - a.level);
-
-  res.status(200).json({
-    success: true,
-    lastUpdated: new Date().toISOString(),
-    advisories
-  });
+    res.status(200).json({
+      success: true,
+      lastUpdated: new Date().toISOString(),
+      advisories: fallbackAdvisories,
+      note: 'Using fallback data - API temporarily unavailable'
+    });
+  }
 };
