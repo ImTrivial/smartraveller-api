@@ -1,4 +1,4 @@
-// api/smartraveller.js
+// api/smartraveler.js
 // This file goes in your Vercel project under /api folder
 
 export default async function handler(req, res) {
